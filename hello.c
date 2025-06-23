@@ -35,10 +35,11 @@ void uart0_init(void)
     *(SYSCTL_RCGCUART) |= SYSCTL_RCGCUART_UART0; // Aktifkan clock untuk UART0
 
     // Beri waktu sejenak agar clock stabil (delay kecil, penting untuk hardware nyata)
-    // Untuk emulator QEMU, ini mungkin tidak terlalu krusial, tapi praktik bagus.
-    volatile uint32_t ui32Loop = 0;
-    ui32Loop = *(SYSCTL_RCGC2); // Baca register untuk memastikan clock sudah aktif
-    ui32Loop = *(SYSCTL_RCGCUART); // Baca register untuk memastikan clock sudah aktif
+    // Variabel ui32Loop yang tidak terpakai telah dihapus karena -Werror.
+    // Kode sebelumnya:
+    // volatile uint32_t ui32Loop = 0;
+    // ui32Loop = *(SYSCTL_RCGC2);
+    // ui32Loop = *(SYSCTL_RCGCUART);
 
     // 2. Nonaktifkan UART0 (sebelum konfigurasi)
     *(UART0_CTL) &= ~(UART0_CTL_UARTEN);
