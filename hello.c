@@ -1,6 +1,7 @@
 #include <stdint.h> // Standard C header for fixed-width integer types (e.g., uint32_t, uint16_t).
                     // Crucial for precise bit-width interactions with hardware registers.
 #include "reg.h"    // Custom header defining hardware register addresses, now updated for LM3S6965evb.
+#include <stddef.h> // Diperlukan untuk definisi NULL.
 
 // Definisi karakter kontrol umum
 #define ASCII_CR    0x0D // Carriage Return (Enter) - Karakter ASCII untuk Enter.
@@ -12,7 +13,7 @@
 #define MAX_LINE_LENGTH 128 // Mendefinisikan ukuran maksimum untuk buffer input baris (128 karakter).
 
 // String pesan yang akan ditampilkan.
-static char greet[] = "Welcome to Amadeus OS on LM3S6965evb! ^__________^\n"; // Pesan selamat datang untuk OS.
+static char greet[] = "Welcome to Amadeus OS on LM3S6965evb! ^_^\n"; // Pesan selamat datang untuk OS.
 
 // Fungsi untuk mengirim satu karakter melalui UART0.
 void uart0_putc(char c)
@@ -42,10 +43,14 @@ char uart0_getc(void)
 
 
 // Fungsi untuk mencetak sebuah string ke konsol serial melalui UART0.
+// Ini akan mengkonversi setiap '\n' menjadi '\r\n' untuk kompatibilitas terminal yang lebih baik.
 void print_str(const char *str)
 {
     while (*str) { // Loop selama karakter saat ini bukan null terminator ('\0').
-        uart0_putc(*str); // Kirim karakter saat ini ke UART.
+        if (*str == '\n') { // Jika menemukan karakter newline
+            uart0_putc('\r'); // Kirim Carriage Return
+        }
+        uart0_putc(*str); // Kirim karakter saat ini
         str++; // Pindah ke karakter berikutnya.
     }
 }
@@ -71,9 +76,15 @@ int strlen(const char *s) {
     return len;
 }
 
-// Fungsi untuk menyalin string.
-void strcpy(char *dest, const char *src) {
-    while ((*dest++ = *src++) != '\0');
+// Fungsi untuk menyalin string (hingga n karakter atau sampai null terminator).
+void strncpy(char *dest, const char *src, int n) {
+    int i;
+    for (i = 0; i < n && src[i] != '\0'; i++) {
+        dest[i] = src[i];
+    }
+    for (; i < n; i++) { // Isi sisa dest dengan null jika src lebih pendek dari n
+        dest[i] = '\0';
+    }
 }
 
 // Fungsi untuk membersihkan layar terminal (menggunakan ANSI escape codes).
@@ -101,16 +112,17 @@ void readline(char *buffer, int max_len) {
         c = uart0_getc(); // Baca satu karakter dari UART.
 
         if (c == ASCII_CR || c == ASCII_LF) { // Jika karakter yang diterima adalah Carriage Return (Enter) atau Line Feed.
-            if (c == ASCII_CR) uart0_putc(ASCII_CR); // Jika CR, kirim CR kembali untuk memindahkan kursor ke awal baris.
-            if (c == ASCII_LF) uart0_putc(ASCII_LF); // Jika LF, kirim LF kembali untuk memindahkan kursor ke baris baru.
+            // Cukup kirimkan '\n' saja, print_str akan otomatis mengubahnya menjadi '\r\n'
+            // Ini akan memindahkan kursor ke baris baru, memastikan output OS tidak tumpang tindih dengan echo pengguna.
+            uart0_putc('\n'); 
             buffer[count] = '\0'; // Tambahkan null terminator di akhir string yang tersimpan di buffer.
             return; // Keluar dari fungsi readline(), menandakan satu baris input sudah lengkap.
         } else if (c == ASCII_BS || c == ASCII_DEL) { // Jika karakter yang diterima adalah Backspace atau Delete.
             if (count > 0) { // Hanya proses backspace jika ada karakter yang sudah diketik di buffer.
                 count--;     // Kurangi 'count' (secara logis menghapus karakter terakhir dari buffer).
                 uart0_putc(ASCII_BS); // Kirim karakter backspace ke terminal untuk menggerakkan kursor mundur.
-                uart0_putc(' ');      // Kirim spasi untuk menimpa (menghapus visual) karakter sebelumnya.
-                uart0_putc(ASCII_BS); // Kirim backspace lagi untuk menggerakkan kursor kembali ke posisi yang baru dihapus.
+                uart0_putc(' ');      // Tulis spasi untuk menimpa (menghapus visual) karakter sebelumnya.
+                uart0_putc(ASCII_BS); // Pindahkan kursor mundur lagi ke posisi yang baru dihapus.
                 buffer[count] = '\0'; // Set karakter di posisi 'count' yang baru menjadi null terminator (menghapus secara logis dari string).
             }
         } else { // Jika karakter yang diterima adalah karakter biasa (bukan Enter atau Backspace/Delete).
@@ -125,41 +137,62 @@ void readline(char *buffer, int max_len) {
 
 // --- Fungsi Konversi Angka dan Print Angka ---
 
-// Mengkonversi string (ASCII) menjadi integer (sangat sederhana, hanya untuk angka positif).
-// Fungsi ini mengabaikan spasi di awal dan hanya membaca digit hingga karakter non-digit.
+// Mengkonversi string (ASCII) menjadi integer (mendukung angka positif/negatif).
+// Fungsi ini mengabaikan spasi di awal dan membaca digit hingga karakter non-digit.
+// Juga dapat mengabaikan spasi setelah operator.
 int atoi(const char *s) {
     int res = 0;
+    int sign = 1; // Default positif
     int i = 0;
+
     while (s[i] == ' ') i++; // Lewati spasi di awal
+
+    if (s[i] == '-') { // Cek tanda negatif
+        sign = -1;
+        i++;
+    } else if (s[i] == '+') { // Cek tanda positif (opsional)
+        i++;
+    }
+
     while (s[i] >= '0' && s[i] <= '9') {
         res = res * 10 + (s[i] - '0');
         i++;
     }
-    return res;
+    return res * sign; // Kembalikan hasil dengan tanda
 }
 
 // Mengkonversi integer menjadi string (ASCII).
 // Fungsi ini akan mengisi buffer dengan representasi string dari angka.
 void itoa(int n, char *s) {
-    int i, sign;
-    if ((sign = n) < 0) // Menandai jika angka negatif dan membuat positif.
-        n = -n;
-    i = 0;
-    do { // Mengubah digit terakhir angka menjadi karakter dan menyimpannya.
-        s[i++] = n % 10 + '0'; // Dapatkan digit berikutnya.
-    } while ((n /= 10) > 0); // Hapus digit yang sudah diproses.
-    if (sign < 0) // Tambahkan tanda negatif jika angka aslinya negatif.
-        s[i++] = '-';
-    s[i] = '\0'; // Null-terminate string.
+    int i = 0;
+    int sign = n; // Simpan tanda asli untuk penanganan negatif
+    char tmp_s[16]; // Buffer sementara untuk menyimpan digit terbalik
 
-    // Membalikkan string karena digit diambil dari belakang.
-    int j = 0;
-    char temp;
-    for (j = 0, i--; j < i; j++, i--) {
-        temp = s[j];
-        s[j] = s[i];
-        s[i] = temp;
+    if (n == 0) {
+        s[i++] = '0';
+        s[i] = '\0';
+        return;
     }
+
+    if (sign < 0) {
+        n = -n; // Buat angka positif untuk konversi digit
+    }
+
+    do { // Ubah digit terakhir angka menjadi karakter dan simpan di tmp_s
+        tmp_s[i++] = n % 10 + '0';
+    } while ((n /= 10) > 0);
+
+    if (sign < 0) {
+        tmp_s[i++] = '-'; // Tambahkan tanda negatif jika angka aslinya negatif
+    }
+    tmp_s[i] = '\0'; // Null-terminate buffer sementara
+
+    // Membalikkan string dari tmp_s ke s
+    int j = 0;
+    for (j = 0, i--; i >= 0; i--, j++) {
+        s[j] = tmp_s[i];
+    }
+    s[j] = '\0'; // Null-terminate string akhir
 }
 
 // --- Akhir Fungsi Konversi Angka dan Print Angka ---
@@ -243,66 +276,92 @@ void main(void)
         readline(line_buffer, MAX_LINE_LENGTH); // Baca satu baris input dari pengguna, termasuk penanganan backspace.
 
         // --- Menganalisis Perintah dan Menerapkan Perintah Dasar ---
-        if (strcmp(line_buffer, "help") == 0) { // Jika input adalah string "help".
+        // Penanganan masalah tampilan: readline sudah menambahkan CR/LF, jadi OS response akan di baris baru.
+        // Sekarang kita perlu memastikan jika user mengetik sesuatu, itu tidak mengotori output.
+
+        // Perbaikan parsing echo dan calc:
+        // Cek apakah perintah dimulai dengan "echo " atau "calc " (case-insensitive awal)
+        
+        // Memisahkan perintah dari argumennya
+        char command_name[16]; // Buffer untuk nama perintah
+        const char *args_ptr = line_buffer; // Pointer ke argumen
+
+        // Lewati spasi di awal baris input
+        while (*args_ptr == ' ') args_ptr++;
+
+        int i = 0;
+        // Salin nama perintah hingga spasi pertama atau null terminator
+        while (args_ptr[i] != ' ' && args_ptr[i] != '\0' && i < 15) {
+            // Konversi ke huruf kecil untuk perbandingan case-insensitive
+            if (args_ptr[i] >= 'A' && args_ptr[i] <= 'Z') {
+                command_name[i] = args_ptr[i] + ('a' - 'A');
+            } else {
+                command_name[i] = args_ptr[i];
+            }
+            i++;
+        }
+        command_name[i] = '\0'; // Null-terminate nama perintah
+
+        // Majukan args_ptr ke awal argumen (setelah spasi pertama setelah nama perintah)
+        if (args_ptr[i] == ' ') { // Jika ada spasi setelah perintah
+            args_ptr += i + 1; // Majukan pointer setelah nama perintah dan spasi
+            while (*args_ptr == ' ') args_ptr++; // Lewati spasi berlebih
+        } else { // Jika tidak ada spasi (perintah tanpa argumen)
+            args_ptr += i; // Majukan pointer ke null terminator
+        }
+        
+
+        if (strcmp(command_name, "help") == 0) { // Jika input adalah string "help".
             print_str("Available commands:\n"); // Cetak pesan daftar perintah.
             print_str("  help   - Display this help message\n");
             print_str("  echo   - Echoes back the input (e.g., echo hello world)\n"); // Contoh penggunaan.
             print_str("  clear  - Clears the terminal screen\n");
-            print_str("  calc   - Basic calculator (e.g., calc 5 + 3)\n"); // Menambahkan deskripsi perintah 'calc'.
-            print_str("  exit   - Exits the QEMU emulator (requires Ctrl-A X)\n"); // Note: Exit dari QEMU via Ctrl-A X.
-        } else if (strcmp(line_buffer, "clear") == 0) { // Jika input adalah string "clear".
+            print_str("  calc   - Basic calculator (e.g., calc 5 + 3, calc 10 * -2)\n"); // Update help for calc
+            print_str("  exit   - Exits the QEMU emulator (requires Ctrl-A X)\n");
+        } else if (strcmp(command_name, "clear") == 0) { // Jika input adalah string "clear".
             clear_screen(); // Panggil fungsi untuk membersihkan layar terminal.
-        } else if (
-            (line_buffer[0] == 'e' || line_buffer[0] == 'E') &&
-            (line_buffer[1] == 'c' || line_buffer[1] == 'C') &&
-            (line_buffer[2] == 'h' || line_buffer[2] == 'H') &&
-            (line_buffer[3] == 'o' || line_buffer[3] == 'O') &&
-            (line_buffer[4] == ' ')
-        ) { // Penanganan sederhana untuk perintah 'echo'.
-            print_str(&line_buffer[5]); // Cetak string yang dimulai dari indeks 5 (setelah "echo ").
-            print_str("\n"); // Tambahkan baris baru setelah output echo.
-        } else if (
-            (line_buffer[0] == 'c' || line_buffer[0] == 'C') &&
-            (line_buffer[1] == 'a' || line_buffer[1] == 'A') &&
-            (line_buffer[2] == 'l' || line_buffer[2] == 'L') &&
-            (line_buffer[3] == 'c' || line_buffer[3] == 'C') &&
-            (line_buffer[4] == ' ')
-        ) { // Penanganan untuk perintah 'calc'.
-            // Format diharapkan: "calc <angka1> <operator> <angka2>"
-            // Contoh: "calc 5 + 3"
-            const char *cmd_ptr = &line_buffer[5]; // Pointer ke bagian setelah "calc ".
-            int num1 = 0;
-            char op = '\0';
-            int num2 = 0;
-            char result_str[16]; // Buffer untuk menyimpan hasil sebagai string.
+        } else if (strcmp(command_name, "echo") == 0) { // Penanganan untuk perintah 'echo'.
+            print_str("Echo: ");
+            print_str(args_ptr); // Cetak argumen
+            print_str("\n");
+        } else if (strcmp(command_name, "calc") == 0) { // Penanganan untuk perintah 'calc'.
+            // Format diharapkan: "<angka1> <operator> <angka2>" setelah "calc "
+            
+            const char *num1_start_ptr = args_ptr; // Pointer ke awal angka pertama
+            char op_char = '\0';             // Karakter operator
+            const char *num2_start_ptr = NULL;     // Pointer ke awal angka kedua
 
             // Parsing num1
-            while (*cmd_ptr >= '0' && *cmd_ptr <= '9') {
-                num1 = num1 * 10 + (*cmd_ptr - '0');
-                cmd_ptr++;
-            }
-
-            // Lewati spasi setelah num1
-            while (*cmd_ptr == ' ') cmd_ptr++;
+            int num1 = atoi(num1_start_ptr);
+            // Majukan pointer ke karakter setelah angka1 (dan mungkin tanda)
+            const char *temp_num1_end = num1_start_ptr;
+            if (*temp_num1_end == '-' || *temp_num1_end == '+') temp_num1_end++; // Lewati tanda jika ada
+            while (*temp_num1_end >= '0' && *temp_num1_end <= '9') temp_num1_end++;
+            
+            // Majukan current_ptr melewati angka pertama dan spasi
+            const char *current_ptr = temp_num1_end;
+            while (*current_ptr == ' ') current_ptr++; // Lewati spasi
 
             // Parsing operator
-            if (*cmd_ptr == '+' || *cmd_ptr == '-' || *cmd_ptr == '*' || *cmd_ptr == '/') {
-                op = *cmd_ptr;
-                cmd_ptr++;
+            if (*current_ptr == '+' || *current_ptr == '-' || *current_ptr == '*' || *current_ptr == '/') {
+                op_char = *current_ptr; // Simpan karakter operator
+                current_ptr++;
+            } else {
+                print_str("Error: Invalid operator or calc format. Use: calc <num1> <op> <num2>\n");
+                goto end_calc; // Lompat ke bagian akhir calc
             }
 
             // Lewati spasi setelah operator
-            while (*cmd_ptr == ' ') cmd_ptr++;
+            while (*current_ptr == ' ') current_ptr++;
 
             // Parsing num2
-            while (*cmd_ptr >= '0' && *cmd_ptr <= '9') {
-                num2 = num2 * 10 + (*cmd_ptr - '0');
-                cmd_ptr++;
-            }
-
+            num2_start_ptr = current_ptr; // num2 dimulai dari posisi current_ptr saat ini
+            int num2 = atoi(num2_start_ptr); 
+            
             // Lakukan perhitungan
             int result = 0;
-            switch (op) {
+            char result_str[16]; 
+            switch (op_char) { // Gunakan op_char yang dideklarasikan
                 case '+': result = num1 + num2; break;
                 case '-': result = num1 - num2; break;
                 case '*': result = num1 * num2; break;
@@ -311,24 +370,32 @@ void main(void)
                         result = num1 / num2;
                     } else {
                         print_str("Error: Division by zero!\n");
-                        continue; // Lanjutkan ke loop berikutnya
+                        goto end_calc; // Lompat ke bagian akhir calc
                     }
                     break;
                 default:
-                    print_str("Error: Invalid operator or calc format. Use: calc <num1> <op> <num2>\n");
-                    continue; // Lanjutkan ke loop berikutnya
+                    print_str("Error: Unknown operator.\n"); 
+                    goto end_calc; 
             }
 
             // Cetak hasil
             print_str("Result: ");
-            itoa(result, result_str); // Konversi hasil integer ke string
+            itoa(result, result_str); 
             print_str(result_str);
             print_str("\n");
-
+            
+            end_calc:; // Label untuk goto
         }
-        else if (line_buffer[0] != '\0') { // Jika input bukan string kosong, dan bukan perintah yang dikenali.
+        else if (strcmp(command_name, "exit") == 0) { // Menambahkan penanganan perintah 'exit'
+            print_str("Exiting Amadeus OS...\n");
+            // Untuk keluar dari loop utama, yang mengakhiri shell.
+            // Di QEMU, ini akan membuat CPU idle di infinite loop di startup.c setelah main() selesai.
+            // Anda tetap perlu Ctrl-A X untuk keluar dari emulator QEMU secara penuh.
+            return; // Keluar dari main loop, main() akan berakhir
+        }
+        else if (command_name[0] != '\0') { // Jika nama perintah bukan string kosong, dan bukan perintah yang dikenali.
             print_str("Command not found: "); // Cetak pesan "Command not found".
-            print_str(line_buffer); // Cetak perintah yang tidak ditemukan.
+            print_str(line_buffer); // Cetak seluruh baris input (termasuk argumen).
             print_str("\n"); // Tambahkan baris baru.
         }
         // --- Akhir Analisis Perintah dan Perintah Dasar ---
