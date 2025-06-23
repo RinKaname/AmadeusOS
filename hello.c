@@ -61,6 +61,21 @@ int strcmp(const char *s1, const char *s2) {
     return *(const unsigned char*)s1 - *(const unsigned char*)s2;
 }
 
+// Fungsi untuk menghitung panjang string.
+int strlen(const char *s) {
+    int len = 0;
+    while (*s != '\0') {
+        len++;
+        s++;
+    }
+    return len;
+}
+
+// Fungsi untuk menyalin string.
+void strcpy(char *dest, const char *src) {
+    while ((*dest++ = *src++) != '\0');
+}
+
 // Fungsi untuk membersihkan layar terminal (menggunakan ANSI escape codes).
 // ANSI escape codes adalah urutan karakter khusus yang dipahami oleh terminal untuk melakukan aksi (misal: membersihkan layar, memindahkan kursor).
 void clear_screen(void) {
@@ -108,6 +123,47 @@ void readline(char *buffer, int max_len) {
     }
 }
 
+// --- Fungsi Konversi Angka dan Print Angka ---
+
+// Mengkonversi string (ASCII) menjadi integer (sangat sederhana, hanya untuk angka positif).
+// Fungsi ini mengabaikan spasi di awal dan hanya membaca digit hingga karakter non-digit.
+int atoi(const char *s) {
+    int res = 0;
+    int i = 0;
+    while (s[i] == ' ') i++; // Lewati spasi di awal
+    while (s[i] >= '0' && s[i] <= '9') {
+        res = res * 10 + (s[i] - '0');
+        i++;
+    }
+    return res;
+}
+
+// Mengkonversi integer menjadi string (ASCII).
+// Fungsi ini akan mengisi buffer dengan representasi string dari angka.
+void itoa(int n, char *s) {
+    int i, sign;
+    if ((sign = n) < 0) // Menandai jika angka negatif dan membuat positif.
+        n = -n;
+    i = 0;
+    do { // Mengubah digit terakhir angka menjadi karakter dan menyimpannya.
+        s[i++] = n % 10 + '0'; // Dapatkan digit berikutnya.
+    } while ((n /= 10) > 0); // Hapus digit yang sudah diproses.
+    if (sign < 0) // Tambahkan tanda negatif jika angka aslinya negatif.
+        s[i++] = '-';
+    s[i] = '\0'; // Null-terminate string.
+
+    // Membalikkan string karena digit diambil dari belakang.
+    int j = 0;
+    char temp;
+    for (j = 0, i--; j < i; j++, i--) {
+        temp = s[j];
+        s[j] = s[i];
+        s[i] = temp;
+    }
+}
+
+// --- Akhir Fungsi Konversi Angka dan Print Angka ---
+
 
 // Fungsi inisialisasi UART0
 void uart0_init(void)
@@ -145,7 +201,7 @@ void uart0_init(void)
 
     // 4. Konfigurasi Baud Rate UART0 (misal: 115200 baud)
     // Clock sistem untuk LM3S6965evb di QEMU umumnya 50 MHz (sesuai spesifikasi chip).
-    // Rumus Baud Rate Divisor (BRD) = System Clock / (16 * Baud Rate)
+    // Baud Rate Divisor (BRD) = System Clock / (16 * Baud Rate)
     // BRD = 50,000,000 / (16 * 115200) = 50,000,000 / 1,843,200 = 27.1267...
     // IBRD (Integer Baud Rate Divisor) = floor(BRD) = 27
     // FBRD (Fractional Baud Rate Divisor) = round(0.1267 * 64) = round(8.1088) = 8
@@ -155,16 +211,16 @@ void uart0_init(void)
     *(UART0_FBRD) = 8; // Mengatur bagian pecahan dari pembagi baud rate (Fractional Baud Rate Divisor).
 
     // 5. Konfigurasi Line Control Register, High (LCRH)
-    // Menulis ke register ini akan memicu pembaruan nilai-nilai IBRD dan FBRD yang baru di-set.
-    // - UART0_LCRH_WLEN_8: Mengatur panjang kata data menjadi 8 bit.
-    // - UART0_LCRH_FEN: Mengaktifkan FIFO (buffer) untuk transmisi dan penerimaan.
-    // - No parity, 1 stop bit (default karena bit lain tidak diset).
+    // Menulis ke register ini akan memicu pembaruan IBRD dan FBRD.
+    // - UART0_LCRH_WLEN_8: 8-bit data
+    // - UART0_LCRH_FEN: Aktifkan FIFO
+    // - No parity, 1 stop bit (default karena bit lain tidak diset)
     *(UART0_LCRH) = (UART0_LCRH_WLEN_8 | UART0_LCRH_FEN); // Mengkonfigurasi format data serial dan mengaktifkan FIFO.
 
     // 6. Aktifkan UART0, Transmitter, dan Receiver
-    // UARTEN: Mengaktifkan seluruh modul UART.
-    // TXE: Mengaktifkan bagian transmitter (pengirim) UART.
-    // RXE: Mengaktifkan bagian receiver (penerima) UART.
+    // UARTEN: Aktifkan modul UART
+    // TXE: Aktifkan bagian transmitter
+    // RXE: Aktifkan bagian receiver
     *(UART0_CTL) = (UART0_CTL_UARTEN | UART0_CTL_TXE | UART0_CTL_RXE); // Mengaktifkan fungsionalitas keseluruhan UART.
 }
 
@@ -192,18 +248,83 @@ void main(void)
             print_str("  help   - Display this help message\n");
             print_str("  echo   - Echoes back the input (e.g., echo hello world)\n"); // Contoh penggunaan.
             print_str("  clear  - Clears the terminal screen\n");
+            print_str("  calc   - Basic calculator (e.g., calc 5 + 3)\n"); // Menambahkan deskripsi perintah 'calc'.
             print_str("  exit   - Exits the QEMU emulator (requires Ctrl-A X)\n"); // Note: Exit dari QEMU via Ctrl-A X.
         } else if (strcmp(line_buffer, "clear") == 0) { // Jika input adalah string "clear".
             clear_screen(); // Panggil fungsi untuk membersihkan layar terminal.
         } else if (
-            (line_buffer[0] == 'e' || line_buffer[0] == 'E') && // Memeriksa karakter pertama adalah 'e' atau 'E'.
-            (line_buffer[1] == 'c' || line_buffer[1] == 'C') && // Memeriksa karakter kedua adalah 'c' atau 'C'.
-            (line_buffer[2] == 'h' || line_buffer[2] == 'H') && // Memeriksa karakter ketiga adalah 'h' atau 'H'.
-            (line_buffer[3] == 'o' || line_buffer[3] == 'O') && // Memeriksa karakter keempat adalah 'o' atau 'O'.
-            (line_buffer[4] == ' ')                               // Memeriksa karakter kelima adalah spasi.
-        ) { // Penanganan sederhana untuk perintah 'echo' (tanpa parsing argumen kompleks).
+            (line_buffer[0] == 'e' || line_buffer[0] == 'E') &&
+            (line_buffer[1] == 'c' || line_buffer[1] == 'C') &&
+            (line_buffer[2] == 'h' || line_buffer[2] == 'H') &&
+            (line_buffer[3] == 'o' || line_buffer[3] == 'O') &&
+            (line_buffer[4] == ' ')
+        ) { // Penanganan sederhana untuk perintah 'echo'.
             print_str(&line_buffer[5]); // Cetak string yang dimulai dari indeks 5 (setelah "echo ").
             print_str("\n"); // Tambahkan baris baru setelah output echo.
+        } else if (
+            (line_buffer[0] == 'c' || line_buffer[0] == 'C') &&
+            (line_buffer[1] == 'a' || line_buffer[1] == 'A') &&
+            (line_buffer[2] == 'l' || line_buffer[2] == 'L') &&
+            (line_buffer[3] == 'c' || line_buffer[3] == 'C') &&
+            (line_buffer[4] == ' ')
+        ) { // Penanganan untuk perintah 'calc'.
+            // Format diharapkan: "calc <angka1> <operator> <angka2>"
+            // Contoh: "calc 5 + 3"
+            const char *cmd_ptr = &line_buffer[5]; // Pointer ke bagian setelah "calc ".
+            int num1 = 0;
+            char op = '\0';
+            int num2 = 0;
+            char result_str[16]; // Buffer untuk menyimpan hasil sebagai string.
+
+            // Parsing num1
+            while (*cmd_ptr >= '0' && *cmd_ptr <= '9') {
+                num1 = num1 * 10 + (*cmd_ptr - '0');
+                cmd_ptr++;
+            }
+
+            // Lewati spasi setelah num1
+            while (*cmd_ptr == ' ') cmd_ptr++;
+
+            // Parsing operator
+            if (*cmd_ptr == '+' || *cmd_ptr == '-' || *cmd_ptr == '*' || *cmd_ptr == '/') {
+                op = *cmd_ptr;
+                cmd_ptr++;
+            }
+
+            // Lewati spasi setelah operator
+            while (*cmd_ptr == ' ') cmd_ptr++;
+
+            // Parsing num2
+            while (*cmd_ptr >= '0' && *cmd_ptr <= '9') {
+                num2 = num2 * 10 + (*cmd_ptr - '0');
+                cmd_ptr++;
+            }
+
+            // Lakukan perhitungan
+            int result = 0;
+            switch (op) {
+                case '+': result = num1 + num2; break;
+                case '-': result = num1 - num2; break;
+                case '*': result = num1 * num2; break;
+                case '/':
+                    if (num2 != 0) {
+                        result = num1 / num2;
+                    } else {
+                        print_str("Error: Division by zero!\n");
+                        continue; // Lanjutkan ke loop berikutnya
+                    }
+                    break;
+                default:
+                    print_str("Error: Invalid operator or calc format. Use: calc <num1> <op> <num2>\n");
+                    continue; // Lanjutkan ke loop berikutnya
+            }
+
+            // Cetak hasil
+            print_str("Result: ");
+            itoa(result, result_str); // Konversi hasil integer ke string
+            print_str(result_str);
+            print_str("\n");
+
         }
         else if (line_buffer[0] != '\0') { // Jika input bukan string kosong, dan bukan perintah yang dikenali.
             print_str("Command not found: "); // Cetak pesan "Command not found".
