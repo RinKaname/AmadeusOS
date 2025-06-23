@@ -1,113 +1,136 @@
-// ENTRY(reset_handler) :
-// Ini memberitahu linker bahwa 'reset_handler' adalah titik masuk pertama (entry point)
-// untuk program Anda setelah CPU di-reset. Saat mikrokontroler booting,
-// dia akan mencari alamat ini di Vector Table dan mulai eksekusi dari sini.
-// (Pada ARM Cortex-M, ini biasanya elemen kedua di tabel vektor interrupt).
+/*
+ * Linker script for Amadeus OS.
+ * This script defines how the code and data sections of the program will be
+ * arranged in the memory of the target microcontroller (STM32F103-like).
+ */
+
+/* ENTRY(reset_handler):
+ * This tells the linker that 'reset_handler' is the first entry point for your program
+ * after the CPU is reset. When the microcontroller boots, it will look up this address
+ * in the Vector Table and begin execution from there.
+ * (On ARM Cortex-M, this is typically the second element in the interrupt vector table).
+ */
 ENTRY(reset_handler)
 
-// MEMORY: Blok ini mendefinisikan region-region memori fisik yang ada pada mikrokontroler target Anda.
-// Anda harus tahu ini dari datasheet atau Reference Manual mikrokontroler.
+/* MEMORY: This block defines the physical memory regions available on your target microcontroller.
+ * You typically get this information from the microcontroller's datasheet or Reference Manual.
+ */
 MEMORY
 {
-	// FLASH (rx):
-	// - FLASH: Nama region memori (seperti hard drive di PC, tapi ini Read-Only Memory/ROM).
-	//   Ini adalah tempat kode program (executable code) dan data read-only disimpan secara permanen.
-	// - (rx): Atribut akses untuk region ini:
-	//   - r: readable (bisa dibaca)
-	//   - x: executable (bisa dieksekusi)
-	// - ORIGIN = 0x08000000: Alamat awal (base address) dari memori Flash.
-	//   Ini adalah alamat fisik di mana program Anda akan dimuat.
-	// - LENGTH = 128K: Ukuran total memori Flash yang tersedia (128 Kilobyte).
+	/* FLASH (rx):
+	 * - FLASH: Name of the memory region (like a hard drive in a PC, but this is Read-Only Memory/ROM).
+	 * This is where the executable code and read-only data are permanently stored.
+	 * - (rx): Access attributes for this region:
+	 * - r: readable
+	 * - x: executable
+	 * - ORIGIN = 0x08000000: The base (starting) address of the Flash memory.
+	 * This is the physical address where your program will be loaded.
+	 * - LENGTH = 128K: The total size of the available Flash memory (128 Kilobytes).
+	 */
 	FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 128K
 
-	// RAM (rwx):
-	// - RAM: Nama region memori (seperti RAM di PC, ini Random Access Memory).
-	//   Ini adalah tempat data yang bisa diubah (variabel global, stack, heap) disimpan saat program berjalan.
-	// - (rwx): Atribut akses untuk region ini:
-	//   - r: readable (bisa dibaca)
-	//   - w: writable (bisa ditulis/diubah)
-	//   - x: executable (bisa dieksekusi - kadang RAM bisa dieksekusi untuk self-modifying code atau bootloader tahap 2, tapi tidak selalu)
-	// - ORIGIN = 0x20000000: Alamat awal dari memori RAM (SRAM).
-	// - LENGTH = 40K: Ukuran total memori RAM yang tersedia (40 Kilobyte).
+	/* RAM (rwx):
+	 * - RAM: Name of the memory region (like RAM in a PC, this is Random Access Memory/SRAM).
+	 * This is where modifiable data (global variables, stack, heap) is stored during program execution.
+	 * - (rwx): Access attributes for this region:
+	 * - r: readable
+	 * - w: writable
+	 * - x: executable (sometimes RAM can be executable for self-modifying code or stage 2 bootloaders, but not always)
+	 * - ORIGIN = 0x20000000: The base (starting) address of the RAM (SRAM).
+	 * - LENGTH = 40K: The total size of the available RAM memory (40 Kilobytes).
+	 */
 	RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 40K
 }
 
-// SECTIONS: Blok ini mendefinisikan bagaimana bagian-bagian (sections) dari program Anda
-// akan disusun dan ditempatkan ke dalam region memori yang sudah didefinisikan di atas.
-// Setiap file .c atau .s yang Anda kompilasi akan menghasilkan beberapa section
-// (misalnya .text, .data, .rodata, .bss).
+/* SECTIONS: This block defines how the different parts (sections) of your program
+ * will be arranged and placed into the memory regions defined above.
+ * Each .c or .s file you compile will produce several sections
+ * (e.g., .text, .data, .rodata, .bss).
+ */
 SECTIONS
 {
-	// .text : Bagian ini berisi kode program yang bisa dieksekusi (instruksi CPU).
+	/* .text: This section contains the executable code (CPU instructions).
+	 */
 	.text :
 	{
-		// KEEP(*(.isr_vector)):
-		// - .isr_vector: Ini adalah section khusus yang berisi Tabel Vektor Interrupt.
-		//   Tabel ini sangat penting untuk startup ARM Cortex-M karena berisi alamat reset_handler
-		//   dan handler-handler penting lainnya.
-		// - KEEP(*(...)): Instruksi ini memberitahu linker untuk "menyimpan" section ini.
-		//   Artinya, meskipun linker mungkin tidak melihat referensi langsung dari kode C lainnya
-		//   ke setiap entri di .isr_vector, ia tidak boleh menghapusnya (tidak boleh dioptimasi).
-		//   Ini krusial agar Tabel Vektor Interrupt tidak hilang dari binary final.
+		/* KEEP(*(.isr_vector)):
+		 * - .isr_vector: This is a special section that contains the Interrupt Vector Table.
+		 * This table is crucial for ARM Cortex-M startup as it holds the address of the reset_handler
+		 * and other important exception/interrupt handlers.
+		 * - KEEP(*(...)): This instruction tells the linker to "keep" this section.
+		 * This means that even if the linker doesn't see a direct reference from other C code
+		 * to every entry in .isr_vector, it must not remove it (it must not be optimized out).
+		 * This is crucial for the Interrupt Vector Table to not disappear from the final binary.
+		 */
 		KEEP(*(.isr_vector))
 
-		// *(.text): Mengumpulkan semua section .text dari semua file objek (.o).
-		// *(.text.*): Mengumpulkan semua sub-section dari .text (misalnya .text.main, .text.print_str).
-		//   Ini memastikan semua kode program dimasukkan.
+		/* *(.text): Collects all .text sections from all object files (.o).
+		 * *(.text.*): Collects all sub-sections of .text (e.g., .text.main, .text.print_str).
+		 * This ensures all executable code is included.
+		 */
 		*(.text)
 		*(.text.*)
 
-		// *(.rodata): Mengumpulkan semua section .rodata (read-only data).
-		//   Ini termasuk string literal (seperti "Welcome to Amadeus OS.\n" jika tidak dideklarasikan sebagai variabel global).
-		//   Di linker script ini, .rodata ditempatkan LANGSUNG SETELAH kode program (.text) di Flash.
+		/* *(.rodata): Collects all .rodata sections (read-only data).
+		 * This includes string literals (like "Welcome to Amadeus OS.\n" if not declared as global variables).
+		 * In this linker script, .rodata is placed IMMEDIATELY AFTER the executable code (.text) in Flash.
+		 */
 		*(.rodata)
 
-		// _sromdev, _eromdev, _sidata:
-		// Ini adalah simbol (variabel) yang didefinisikan oleh linker.
-		// Tanda '.' (dot) merepresentasikan lokasi saat ini dari linker counter.
-		// - _sromdev = .; : Menandai alamat awal dari area data di ROM (Read-Only Memory)
-		//   (sebagai "ROM device").
-		// - _eromdev = .; : Menandai alamat akhir dari area data di ROM.
-		// - _sidata = .; : Ini adalah ALAMAT MUAT (Load Memory Address / LMA)
-		//   untuk section .data. Ini adalah tempat nilai awal variabel .data
-		//   disimpan di Flash (ROM) sebelum disalin ke RAM.
+		/* _sromdev, _eromdev, _sidata:
+		 * These are symbols (variables) defined by the linker.
+		 * The '.' (dot) symbol represents the current location counter of the linker.
+		 * - _sromdev = .; : Marks the starting address of the data area in ROM (Read-Only Memory)
+		 * (as a "ROM device").
+		 * - _eromdev = .; : Marks the ending address of the data area in ROM.
+		 * - _sidata = .; : This is the LOAD Memory Address (LMA)
+		 * for the .data section. This is where the initial values of .data variables
+		 * are stored in Flash (ROM) before being copied to RAM.
+		 */
 		_sromdev = .;
 		_eromdev = .;
-		_sidata = .; // Ini adalah titik krusial yang menghubungkan .text ke .data.
-	} >FLASH // Simbol >FLASH berarti semua section yang didefinisikan di dalam kurung kurawal ini
-	         // (yaitu .isr_vector, .text, .rodata, dan simbol-simbolnya)
-	         // akan DITEMPATKAN di region memori FLASH.
+		_sidata = .; /* This is the crucial point connecting .text to .data. */
+	} >FLASH /* The >FLASH symbol means all sections defined within this curly brace
+	          * (i.e., .isr_vector, .text, .rodata, and its symbols)
+	          * will be PLACED in the FLASH memory region.
+	          */
 
-	// .data : Bagian ini berisi variabel global yang diinisialisasi (punya nilai awal).
-	.data : AT(_sidata) // AT(_sidata) adalah bagian TERPENTING di sini.
-	{                   // Ini adalah ALAMAT MUATAN (Load Memory Address / LMA).
-	                    // Ini memberitahu linker bahwa nilai awal dari variabel-variabel di section .data
-	                    // akan ditemukan pada alamat _sidata (yaitu di dalam Flash, setelah .rodata).
-	                    // Ini adalah "lokasi penyimpanan" mereka di file binary.
+	/* .data: This section contains initialized global variables (variables with an initial value).
+	 */
+	.data : AT(_sidata) /* AT(_sidata) is the MOST IMPORTANT part here.
+	                     * This is the LOAD Memory Address (LMA).
+	                     * It tells the linker that the initial values of the variables in the .data section
+	                     * will be found at the _sidata address (i.e., in Flash, after .rodata).
+	                     * This is their "storage location" in the binary file.
+	                     */
+	{
+		_sdata = .; /* _sdata: The actual starting address (Virtual Memory Address / VMA) of the .data section in RAM.
+		             * This is where the .data variables will RESIDE when the program is running.
+		             */
+		*(.data)    /* Collects all .data sections from all object files. */
+		*(.data*)   /* Collects all sub-sections of .data. */
+		_edata = .; /* _edata: The actual ending address of the .data section in RAM. */
+	} >RAM /* The >RAM symbol means this .data section (after being copied by startup.c)
+	        * will RESIDE and run in the RAM memory region.
+	        */
 
-		_sdata = .; // _sdata: Alamat awal NYATA (Virtual Memory Address / VMA) dari section .data di RAM.
-		            // Ini adalah tempat variabel .data akan BERADA saat program berjalan.
-		*(.data)    // Mengumpulkan semua section .data dari semua file objek.
-		*(.data*)   // Mengumpulkan semua sub-section .data.
-		_edata = .; // _edata: Alamat akhir NYATA dari section .data di RAM.
-	} >RAM // Simbol >RAM berarti section .data ini (setelah disalin oleh startup.c)
-	       // akan BERADA dan berjalan di region memori RAM.
-
-	// .bss : Bagian ini berisi variabel global yang TIDAK diinisialisasi (nilainya nol secara default).
-	// Contoh: `int counter;`
-	// Section ini tidak disimpan di Flash untuk menghemat ruang, hanya dialokasikan di RAM
-	// dan diisi dengan nol oleh `reset_handler` di `startup.c`.
+	/* .bss: This section contains uninitialized global variables (their value is zero by default).
+	 * Example: `int counter;`
+	 * This section is not stored in Flash to save space; it's only allocated in RAM
+	 * and zero-filled by the `reset_handler` in `startup.c` during startup.
+	 */
 	.bss :
 	{
-		_sbss = .; // _sbss: Alamat awal section .bss di RAM.
-		*(.bss)    // Mengumpulkan semua section .bss dari semua file objek.
-		_ebss = .; // _ebss: Alamat akhir section .bss di RAM.
-	} >RAM // Simbol >RAM berarti section .bss ini akan BERADA dan berjalan di region memori RAM.
+		_sbss = .; /* _sbss: Starting address of the .bss section in RAM. */
+		*(.bss)    /* Collects all .bss sections from all object files. */
+		_ebss = .; /* _ebss: Ending address of the .bss section in RAM. */
+	} >RAM /* The >RAM symbol means this .bss section will RESIDE and run in the RAM memory region. */
 
-	// _estack: Simbol ini menandai alamat puncak stack (alamat memori tertinggi dari stack).
-	// Stack tumbuh ke bawah (dari alamat tinggi ke alamat rendah) pada ARM Cortex-M.
-	// ORIGIN(RAM) adalah alamat awal RAM, LENGTH(RAM) adalah panjang RAM.
-	// Jadi, _estack = (Alamat Awal RAM + Panjang RAM) = Alamat Puncak RAM.
-	// Nilai ini akan digunakan oleh CPU untuk menginisialisasi Stack Pointer (SP) saat reset.
+	/* _estack: This symbol marks the top (highest address) of the stack.
+	 * The stack grows downwards (from high address to low address) on ARM Cortex-M.
+	 * ORIGIN(RAM) is the starting address of RAM, LENGTH(RAM) is the length of RAM.
+	 * So, _estack = (RAM Start Address + RAM Length) = Top of RAM Address.
+	 * This value will be used by the CPU to initialize the Stack Pointer (SP) upon reset.
+	 */
 	_estack = ORIGIN(RAM) + LENGTH(RAM);
 }
