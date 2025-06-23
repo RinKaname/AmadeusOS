@@ -141,7 +141,7 @@ qemu: $(TARGET)
 	# - || exit: Jika 'grep' tidak menemukan string (return code bukan 0), maka perintah akan exit
 	#   (keluar), artinya QEMU Anda tidak mendukung board STM32-P103.
 	#   Ini memastikan Anda tidak mencoba menjalankan QEMU dengan board yang tidak dikenali.
-	@qemu-system-arm -M ? | grep stm32-p103 >/dev/null || exit
+	@qemu-system-arm -M ? | grep lm3s6965evb >/dev/null || exit
 
 	# Pesan informatif untuk pengguna cara keluar dari QEMU.
 	@echo "Press Ctrl-A and then X to exit QEMU"
@@ -156,7 +156,7 @@ qemu: $(TARGET)
 	#   Output serial (seperti dari USART di kode C Anda) akan muncul di terminal yang sama.
 	# - -kernel hello.bin: Memberitahu QEMU untuk memuat file 'hello.bin' sebagai kernel
 	#   dan menjalankannya langsung. QEMU akan menangani bootloader minimal.
-	qemu-system-arm -M stm32-p103 -nographic -kernel hello.bin
+	qemu-system-arm -M lm3s6965evb -nographic -kernel hello.bin
 
 # ==============================================================================
 # 5. Target Utility: Clean

@@ -1,106 +1,85 @@
-#ifndef __REG_H_ // Ini adalah 'include guard'. Jika simbol __REG_H_ belum didefinisikan,
-#define __REG_H_ // maka definisikan, dan proses sisa file. Ini mencegah definisi ganda
-                 // jika file ini di-include berkali-kali di proyek yang sama.
+#ifndef __REG_H_
+#define __REG_H_
 
-// Mendefinisikan tipe data dasar untuk representasi register hardware.
-// volatile: Kata kunci ini sangat penting dalam pemrograman bare-metal/embedded.
-//           Ia memberitahu compiler bahwa nilai di alamat memori yang ditunjuk oleh pointer ini
-//           bisa berubah kapan saja di luar kendali program (misalnya, oleh hardware, DMA, atau interrupt).
-//           Tanpa 'volatile', compiler mungkin mengoptimasi kode dengan berasumsi nilai tidak berubah
-//           dan menyimpan nilai register di cache CPU, sehingga pembacaan/penulisan ke hardware menjadi salah.
-// uint32_t: Menentukan bahwa register ini adalah integer tak bertanda (unsigned) dengan lebar 32 bit.
-//           Sebagian besar register pada mikrokontroler ARM 32-bit (seperti STM32 yang kode ini targetkan)
-//           memiliki lebar 32 bit.
+#include <stdint.h> // Header standar C untuk tipe data integer dengan ukuran tetap.
+
+// Definisi tipe data dasar untuk register.
+// volatile: Penting untuk memberitahu compiler bahwa nilai di lokasi memori ini bisa berubah kapan saja.
+// uint32_t: Lebar register umumnya 32 bit pada ARM Cortex-M.
 #define __REG_TYPE volatile uint32_t
-
-// Mendefinisikan makro '__REG' yang akan digunakan untuk membuat pointer ke register.
-// '__REG_TYPE *' berarti "pointer ke tipe data register (__REG_TYPE)".
-// Saat Anda menggunakan `(__REG) (ALAMAT_DASAR + OFFSET)`, itu akan 'meng-casting' alamat
-// menjadi pointer yang bisa digunakan untuk membaca atau menulis ke register tersebut.
-#define __REG __REG_TYPE *
+#define __REG      __REG_TYPE * // Makro untuk pointer ke register.
 
 /*
  * Konsep Memory-Mapped Peripherals (MMP):
- * Ini adalah cara CPU berinteraksi dengan peripheral (seperti GPIO, USART, Timer, dll.).
- * Setiap peripheral memiliki blok alamat memori unik yang dialokasikan khusus untuk register-registernya.
- * Dengan membaca atau menulis ke alamat-alamat ini, program secara langsung mengontrol fungsi hardware.
- * Ini berbeda dengan I/O-mapped I/O yang menggunakan instruksi khusus (seperti IN/OUT di x86).
- * ARM umumnya menggunakan Memory-Mapped Peripherals.
+ * Ini adalah cara CPU berinteraksi dengan peripheral. Setiap peripheral memiliki blok alamat memori unik
+ * untuk register-registernya. Membaca/menulis ke alamat ini langsung mengontrol hardware.
  */
 
+/* ============================================================================
+ * Perubahan untuk LM3S6965evb (Stellaris LM3S6965 Microcontroller)
+ * Alamat-alamat ini ditemukan di Datasheet LM3S6965 (mis. DS-LM3S6965, Rev. I)
+ * ============================================================================
+ */
 
-/* RCC Memory Map */
-// RCC (Reset and Clock Control) adalah modul inti yang bertanggung jawab untuk:
-// - Mengelola frekuensi clock untuk CPU dan semua peripheral.
-// - Melakukan reset pada berbagai bagian chip.
-// Anda harus "menyalakan" clock untuk peripheral apa pun sebelum Anda bisa menggunakannya.
-#define RCC ((__REG_TYPE)0x40021000) // Alamat dasar (base address) memori untuk modul RCC.
-                                     // Alamat ini ditemukan di Reference Manual mikrokontroler.
-
-// Definisi register-register spesifik dalam modul RCC, menggunakan offset dari alamat dasar RCC.
-// Misalnya, RCC_CR ada di alamat (RCC_BASE_ADDRESS + 0x00).
-// Saat Anda menulis `*(RCC_APB2ENR) |= ...`, Anda sedang menulis ke register di alamat ini.
-#define RCC_CR        ((__REG)(RCC + 0x00))  // Clock Control Register: Mengontrol osilator utama (HSE, HSI, PLL), dll.
-#define RCC_CFGR      ((__REG)(RCC + 0x04))  // Clock Configuration Register: Mengatur pembagian frekuensi clock untuk bus dan peripheral.
-#define RCC_CIR       ((__REG)(RCC + 0x08))  // Clock Interrupt Register: Untuk interrupt terkait clock.
-#define RCC_APB2RSTR  ((__REG)(RCC + 0x0C))  // APB2 Peripheral Reset Register: Digunakan untuk mereset peripheral yang terhubung ke bus APB2.
-#define RCC_APB1RSTR  ((__REG)(RCC + 0x10))  // APB1 Peripheral Reset Register: Digunakan untuk mereset peripheral yang terhubung ke bus APB1.
-#define RCC_AHBENR    ((__REG)(RCC + 0x14))  // AHB Peripheral Clock Enable Register: Mengaktifkan clock untuk peripheral di bus AHB.
-#define RCC_APB2ENR   ((__REG)(RCC + 0x18))  // APB2 Peripheral Clock Enable Register: Mengaktifkan clock untuk peripheral di bus APB2 (misalnya GPIO, USART1).
-                                             // Ini adalah register yang digunakan di main.c untuk mengaktifkan clock GPIOA dan AFIO.
-#define RCC_APB1ENR   ((__REG)(RCC + 0x1C))  // APB1 Peripheral Clock Enable Register: Mengaktifkan clock untuk peripheral di bus APB1 (misalnya USART2).
-                                             // Ini adalah register yang digunakan di main.c untuk mengaktifkan clock USART2.
-#define RCC_BDCR      ((__REG)(RCC + 0x20))  // Backup Domain Control Register: Mengontrol RTC (Real-Time Clock) dan backup registers.
-#define RCC_CSR       ((__REG)(RCC + 0x24))  // Control/Status Register: Status reset dan low power reset.
-
-/* Flash Memory Map */
-// Modul Flash Memory mengontrol akses ke memori Flash di mana kode program Anda disimpan.
-// Ini bisa mengatur parameter seperti latency akses atau mengaktifkan/menonaktifkan prefetch.
-#define FLASH     ((__REG_TYPE)0x40022000) // Alamat dasar untuk modul Flash.
-#define FLASH_ACR ((__REG)(FLASH + 0x00))  // Access Control Register: Mengatur wait states (latency) untuk akses Flash.
+/* System Control (SYSCTL) Memory Map - Pengganti RCC pada STM32 */
+// SYSCTL mengontrol clock, reset, dan fungsi sistem dasar lainnya untuk LM3S6965.
+#define SYSCTL_BASE         ((__REG_TYPE)0x400FE000) // Alamat dasar untuk modul SYSCTL
+#define SYSCTL_RCGC2        ((__REG)(SYSCTL_BASE + 0x108)) // Run Mode Clock Gating Control Register 2
+                                                             // Digunakan untuk mengaktifkan clock peripheral seperti GPIO dan UART.
 
 /* GPIO Memory Map */
-// GPIO (General Purpose Input/Output) adalah modul yang mengontrol pin-pin fisik pada mikrokontroler.
-// Anda bisa mengkonfigurasi pin sebagai input atau output, mengatur nilai high/low, atau mengalihkan fungsinya
-// untuk peripheral lain (Alternate Function).
-#define GPIOA       ((__REG_TYPE)0x40010800) // Alamat dasar untuk GPIO Port A.
-                                             // Mikrokontroler memiliki beberapa port GPIO (A, B, C, dst.),
-                                             // masing-masing dengan blok alamat registernya sendiri.
-// Definisi register-register spesifik dalam modul GPIOA.
-#define GPIOA_CRL   ((__REG)(GPIOA + 0x00))  // Configuration Register Low: Mengkonfigurasi pin PA0-PA7 (mode, kecepatan, tipe).
-                                             // Digunakan di main.c untuk mengatur PA2 (USART2_Tx) dan PA3 (USART2_Rx).
-#define GPIOA_CRH   ((__REG)(GPIOA + 0x04))  // Configuration Register High: Mengkonfigurasi pin PA8-PA15.
-#define GPIOA_IDR   ((__REG)(GPIOA + 0x08))  // Input Data Register: Digunakan untuk membaca nilai (0 atau 1) dari pin yang dikonfigurasi sebagai input.
-#define GPIOA_ODR   ((__REG)(GPIOA + 0x0C))  // Output Data Register: Digunakan untuk mengatur nilai (0 atau 1) pin yang dikonfigurasi sebagai output.
-                                             // Digunakan di main.c untuk inisialisasi awal.
-#define GPIOA_BSRR  ((__REG)(GPIOA + 0x10))  // Bit Set/Reset Register: Cara atomik untuk mengatur (SET) atau mereset (CLEAR) pin output.
-                                             // Menggunakan satu operasi tulis untuk kedua aksi ini.
-                                             // Digunakan di main.c untuk inisialisasi awal.
-#define GPIOA_BRR   ((__REG)(GPIOA + 0x14))  // Bit Reset Register: Cara atomik untuk mereset (CLEAR) pin output saja.
-                                             // Digunakan di main.c untuk inisialisasi awal.
-#define GPIOA_LCKR  ((__REG)(GPIOA + 0x18))  // Lock Register: Untuk mengunci konfigurasi pin agar tidak bisa diubah sampai reset.
+// GPIO (General Purpose Input/Output) mengontrol pin-pin fisik pada mikrokontroler.
+// LM3S6965 memiliki beberapa port GPIO (A, B, C, dst.). UART0 menggunakan PA0 (Rx) dan PA1 (Tx).
+#define GPIOA_BASE          ((__REG_TYPE)0x40004000) // Alamat dasar untuk GPIO Port A.
+#define GPIOA_DEN           ((__REG)(GPIOA_BASE + 0x51C)) // Digital Enable Register
+#define GPIOA_AFSEL         ((__REG)(GPIOA_BASE + 0x420)) // Alternate Function Select Register
+#define GPIOA_PCTL          ((__REG)(GPIOA_BASE + 0x52C)) // Port Control Register (untuk memilih fungsi alternatif pin)
 
-/* USART2 Memory Map */
-// USART (Universal Synchronous/Asynchronous Receiver/Transmitter) adalah modul komunikasi serial.
-// Digunakan untuk mengirim/menerima data bit demi bit, seringkali untuk debug konsol atau komunikasi dengan sensor/modul eksternal.
-// Ada beberapa modul USART/UART di mikrokontroler (USART1, USART2, dll.). Kode ini menggunakan USART2.
-#define USART2      ((__REG_TYPE)0x40004400) // Alamat dasar untuk modul USART2.
-                                             // Ini adalah lokasi di memori tempat semua register kontrol USART2 berada.
-// Definisi register-register spesifik dalam modul USART2.
-#define USART2_SR   ((__REG)(USART2 + 0x00)) // Status Register: Berisi berbagai flag status seperti:
-                                             //   - TXE (Transmit Data Register Empty): Data siap dikirim.
-                                             //   - RXNE (Read Data Register Not Empty): Data baru sudah diterima.
-                                             // Ini register yang dibaca di fungsi print_str().
-#define USART2_DR   ((__REG)(USART2 + 0x04)) // Data Register: Register tempat Anda menulis data yang ingin dikirim (Transmit Data Register / TDR)
-                                             // atau membaca data yang diterima (Receive Data Register / RDR).
-                                             // Ini register tempat karakter ditulis di print_str().
-#define USART2_BRR  ((__REG)(USART2 + 0x08)) // Baud Rate Register: Mengatur kecepatan transfer data (baud rate) komunikasi serial.
-                                             // Diatur berdasarkan frekuensi clock peripheral dan nilai divisor yang dihitung.
-#define USART2_CR1  ((__REG)(USART2 + 0x0C)) // Control Register 1: Mengaktifkan/menonaktifkan transmitter (TE) dan receiver (RE),
-                                             // mengatur panjang kata (word length), paritas, dan mengaktifkan USART secara keseluruhan (UE).
-                                             // Digunakan di main.c untuk mengaktifkan USART2.
-#define USART2_CR2  ((__REG)(USART2 + 0x10)) // Control Register 2: Mengatur jumlah stop bits, clock pin, mode LIN, dll.
-#define USART2_CR3  ((__REG)(USART2 + 0x14)) // Control Register 3: Mengatur flow control, DMA (Direct Memory Access), mode IRDA, dll.
-#define USART2_GTPR ((__REG)(USART2 + 0x18)) // Guard Time and Prescaler Register: Untuk mode synchronous dan Smartcard.
+/* UART0 Memory Map (ARM PrimeCell PL011 UART) */
+// UART0 adalah modul komunikasi serial pertama yang akan kita gunakan.
+// Alamat-alamat dan offset register ini spesifik untuk PL011 UART.
+#define UART0_BASE          ((__REG_TYPE)0x4000C000) // Alamat dasar untuk modul UART0.
 
-#endif // Akhir dari include guard.
+// Register-register utama UART0 dan offset-nya dari alamat dasar.
+#define UART0_DR            ((__REG)(UART0_BASE + 0x000)) // Data Register (tempat data dikirim/diterima)
+#define UART0_RSR_ECR       ((__REG)(UART0_BASE + 0x004)) // Receive Status Register / Error Clear Register
+#define UART0_FR            ((__REG)(UART0_BASE + 0x018)) // Flag Register (berisi status seperti FIFO penuh/kosong)
+#define UART0_IBRD          ((__REG)(UART0_BASE + 0x024)) // Integer Baud Rate Divisor Register (bagian integer dari pembagi baud rate)
+#define UART0_FBRD          ((__REG)(UART0_BASE + 0x028)) // Fractional Baud Rate Divisor Register (bagian pecahan dari pembagi baud rate)
+#define UART0_LCRH          ((__REG)(UART0_BASE + 0x02C)) // Line Control Register, High (mengatur panjang kata, stop bit, parity, FIFO enable)
+#define UART0_CTL           ((__REG)(UART0_BASE + 0x030)) // Control Register (mengaktifkan UART, transmitter, receiver)
+#define UART0_IFLS          ((__REG)(UART0_BASE + 0x034)) // Interrupt FIFO Level Select Register
+#define UART0_IM            ((__REG)(UART0_BASE + 0x038)) // Interrupt Mask Register
+#define UART0_RIS           ((__REG)(UART0_BASE + 0x03C)) // Raw Interrupt Status Register
+#define UART0_MIS           ((__REG)(UART0_BASE + 0x040)) // Masked Interrupt Status Register
+#define UART0_ICR           ((__REG)(UART0_BASE + 0x044)) // Interrupt Clear Register
+#define UART0_DMACR         ((__REG)(UART0_BASE + 0x048)) // DMA Control Register
+#define UART0_CC            ((__REG)(UART0_BASE + 0xFC8)) // Clock Configuration Register (untuk memilih sumber clock UART)
+
+/* Bit definitions for UART0_FR (Flag Register) */
+#define UART0_FR_TXFF       (1 << 5) // Transmit FIFO Full: Bit 5 (FIFO penuh, tidak bisa kirim lagi)
+#define UART0_FR_RXFE       (1 << 4) // Receive FIFO Empty: Bit 4 (FIFO kosong, tidak ada data diterima)
+
+/* Bit definitions for UART0_LCRH (Line Control Register, High) */
+#define UART0_LCRH_WLEN_8   (0x3 << 5) // Word Length 8-bit: Bit 5-6 set ke 0b11
+#define UART0_LCRH_FEN      (1 << 4)   // FIFO Enable: Bit 4 (mengaktifkan FIFO)
+
+/* Bit definitions for UART0_CTL (Control Register) */
+#define UART0_CTL_UARTEN    (1 << 0)   // UART Enable: Bit 0 (mengaktifkan UART)
+#define UART0_CTL_TXE       (1 << 8)   // Transmit Enable: Bit 8 (mengaktifkan transmitter)
+#define UART0_CTL_RXE       (1 << 9)   // Receive Enable: Bit 9 (mengaktifkan receiver)
+
+
+/* Bit definition for SYSCTL_RCGC2 (Run Mode Clock Gating Control Register 2) */
+// Digunakan untuk mengaktifkan clock ke peripheral tertentu (terutama GPIO).
+#define SYSCTL_RCGC2_GPIOA  (1 << 0)  // Clock Enable for GPIO Port A (Bit 0)
+
+// Perbaikan untuk definisi clock UART, melihat datasheet Stellaris LM3S6965:
+// UART0EN adalah bit 0 dari register RCGCUART (Run Mode Clock Gating Control for UART).
+// RCGCUART ini adalah register terpisah dari RCGC2.
+#define SYSCTL_RCGCUART_BASE ((__REG_TYPE)0x400FE618) // Alamat dasar untuk RCGCUART
+#define SYSCTL_RCGCUART ((__REG)(SYSCTL_RCGCUART_BASE)) // Pointer ke register RCGCUART
+#define SYSCTL_RCGCUART_UART0 (1 << 0) // Clock Enable for UART0 (Bit 0 of RCGCUART)
+
+
+#endif // Akhir dari include guard
