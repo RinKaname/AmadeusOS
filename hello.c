@@ -12,7 +12,7 @@
 #define MAX_LINE_LENGTH 128
 
 // String pesan yang akan ditampilkan.
-static char greet[] = "Welcome to Amadeus OS v0.7.2! ^_^\n";
+static char greet[] = "Welcome to Amadeus OS v0.7.5! ^_^\n";
 
 // ============================================================================
 // Deklarasi Eksternal dari Linker Script untuk Heap
@@ -40,6 +40,7 @@ void* memset(void *s, int c, size_t n);
 void* memcpy(void *dest, const void *src, size_t n);
 void print_hex(uint32_t n);
 uint32_t htoi(const char *s, const char **endptr);
+void panic(const char* message);
 
 // Deklarasi Prototype untuk Heap Manager
 void malloc_init(void);
@@ -47,15 +48,19 @@ void* malloc(size_t size);
 void free(void* ptr);
 void* calloc(size_t num, size_t size);
 void* realloc(void* ptr, size_t new_size);
+void print_heap_map(void);
 
 
 // ============================================================================
 // Implementasi Heap Manager (malloc/free/calloc/realloc)
 // ============================================================================
 
+#define HEAP_MAGIC 0xCAFEBABE // Magic number untuk validasi blok
+
 typedef struct BlockHeader {
     size_t size;
     int free;
+    uint32_t magic; // Magic number untuk validasi
 } BlockHeader;
 
 #define ALIGN_SIZE(size) (((size) + (sizeof(uint32_t) - 1)) & ~(sizeof(uint32_t) - 1))
@@ -65,6 +70,7 @@ void malloc_init(void) {
     BlockHeader* head = (BlockHeader*)&__heap_start__;
     head->size = (uint32_t)&__heap_end__ - (uint32_t)&__heap_start__;
     head->free = 1;
+    head->magic = 0; // Blok awal tidak memiliki magic number
 }
 
 void* malloc(size_t size) {
@@ -78,7 +84,7 @@ void* malloc(size_t size) {
     BlockHeader* current = (BlockHeader*)&__heap_start__;
     BlockHeader* best_fit = NULL;
 
-    while((uint32_t)current < (uint32_t)&__heap_end__) {
+    while((uint32_t)current < (uint32_t)&__heap_end__ && current->size > 0) {
         if (current->free && current->size >= required_size) {
             if (best_fit == NULL || current->size < best_fit->size) {
                  best_fit = current;
@@ -94,9 +100,11 @@ void* malloc(size_t size) {
             BlockHeader* new_block = (BlockHeader*)((uint8_t*)current + required_size);
             new_block->size = current->size - required_size;
             new_block->free = 1;
+            new_block->magic = 0; // Blok bebas baru tidak punya magic
             current->size = required_size;
         }
         current->free = 0;
+        current->magic = HEAP_MAGIC; // Set magic number saat alokasi
         return (void*)((uint8_t*)current + sizeof(BlockHeader));
     }
     return NULL;
@@ -104,18 +112,32 @@ void* malloc(size_t size) {
 
 
 void free(void* ptr) {
-    if (ptr == NULL || (uint32_t)ptr < (uint32_t)&__heap_start__ || (uint32_t)ptr >= (uint32_t)&__heap_end__) {
+    if (ptr == NULL) return;
+
+    // Cek apakah pointer berada di dalam rentang heap
+    if ((uint32_t)ptr < (uint32_t)&__heap_start__ + sizeof(BlockHeader) || (uint32_t)ptr >= (uint32_t)&__heap_end__) {
+        print_str("Error: Address is outside of heap boundary!\n");
         return;
     }
 
     BlockHeader* block_to_free = (BlockHeader*)((uint8_t*)ptr - sizeof(BlockHeader));
 
+    // Validasi magic number
+    if (block_to_free->magic != HEAP_MAGIC) {
+        print_str("Error: Invalid pointer or heap corruption detected!\n");
+        // Di OS nyata, ini bisa memicu panic()
+        // panic("Heap corruption detected in free()");
+        return;
+    }
+
     if (block_to_free->free) {
-        print_str("Warning: Double-free or corrupted pointer detected!\n");
+        print_str("Warning: Double-free detected!\n");
         return;
     }
 
     block_to_free->free = 1;
+    block_to_free->magic = 0; // Hapus magic number saat dibebaskan
+    print_str("Freed memory at "); print_hex((uint32_t)ptr); print_str("\n");
 
     // Coalesce forward
     BlockHeader* next_block = (BlockHeader*)((uint8_t*)block_to_free + block_to_free->size);
@@ -130,6 +152,8 @@ void free(void* ptr) {
         if ((uint32_t)next == (uint32_t)block_to_free) {
              if(current->free){
                 current->size += block_to_free->size;
+                // Setelah digabung, `block_to_free` menjadi tidak relevan,
+                // tapi memorinya sudah menjadi bagian dari `current`.
              }
              break;
         }
@@ -153,9 +177,15 @@ void* realloc(void* ptr, size_t new_size) {
         free(ptr);
         return NULL;
     }
+    
+    // Validasi magic number sebelum realloc
+    BlockHeader* old_header = (BlockHeader*)((uint8_t*)ptr - sizeof(BlockHeader));
+    if (old_header->magic != HEAP_MAGIC) {
+        print_str("Error: Invalid pointer passed to realloc()!\n");
+        return NULL;
+    }
 
-    BlockHeader* block_header = (BlockHeader*)((uint8_t*)ptr - sizeof(BlockHeader));
-    size_t old_size = block_header->size - sizeof(BlockHeader);
+    size_t old_size = old_header->size - sizeof(BlockHeader);
 
     if (new_size <= old_size) return ptr;
 
@@ -167,9 +197,39 @@ void* realloc(void* ptr, size_t new_size) {
     return new_ptr;
 }
 
+void print_heap_map(void) {
+    const int MAP_WIDTH = 40;
+    size_t total_heap_size = (uint32_t)&__heap_end__ - (uint32_t)&__heap_start__;
+    
+    print_str("Heap Map:\n[");
+
+    BlockHeader* current = (BlockHeader*)&__heap_start__;
+    while((uint32_t)current < (uint32_t)&__heap_end__ && current->size > 0) {
+        int chars = (current->size * MAP_WIDTH) / total_heap_size;
+        if (chars == 0) chars = 1;
+        
+        char block_char = current->free ? '-' : '#';
+        for (int i = 0; i < chars; i++) {
+            uart0_putc(block_char);
+        }
+        
+        current = (BlockHeader*)((uint8_t*)current + current->size);
+    }
+    
+    print_str("]\n");
+    print_str("# = Allocated, - = Free\n");
+}
+
 // ============================================================================
 // Implementasi Fungsi Helper
 // ============================================================================
+void panic(const char* message) {
+    print_str("\n*** KERNEL PANIC ***\n");
+    print_str(message);
+    print_str("\nSystem halted.\n");
+    while(1); // Halt the system
+}
+
 void* memset(void *s, int c, size_t n) {
     unsigned char *p = s;
     while (n--) *p++ = (unsigned char)c;
@@ -194,6 +254,7 @@ void print_hex(uint32_t n) {
         return;
     }
     
+    print_str("0x");
     while (n > 0) {
         uint8_t digit = n % 16;
         if (digit < 10) {
@@ -204,7 +265,6 @@ void print_hex(uint32_t n) {
         n /= 16;
     }
     
-    print_str("0x");
     print_str(ptr + 1);
 }
 
@@ -287,12 +347,15 @@ void main(void) {
             print_str("  echo <text>        - Echoes back the input\n");
             print_str("  clear              - Clears the terminal screen\n");
             print_str("  meminfo            - Display heap memory information\n");
+            print_str("  heapmap            - Display a visual map of the heap\n");
             print_str("  alloc <size>       - Allocate memory from heap\n");
             print_str("  calloc <n> <size>  - Allocate and zero-initialize memory\n");
             print_str("  realloc <addr> <sz>- Reallocate memory\n");
             print_str("  free <addr>        - Free memory from heap (e.g., free 0x20000100)\n");
             print_str("  peek <addr>        - Read a 32-bit value from a memory address\n");
             print_str("  poke <addr> <val>  - Write a 32-bit value to a memory address\n");
+            print_str("  fill <addr> <val> <count> - Fill memory with a value\n");
+            print_str("  panic_test         - Test the kernel panic handler\n");
             print_str("  exit               - Exits the QEMU emulator\n");
         } else if (strcmp(command_name, "clear") == 0) {
             clear_screen();
@@ -304,12 +367,18 @@ void main(void) {
             print_str("  Heap Start: "); print_hex((uint32_t)&__heap_start__); print_str("\n");
             print_str("  Heap End:   "); print_hex((uint32_t)&__heap_end__); print_str("\n");
             BlockHeader* current = (BlockHeader*)&__heap_start__;
-            while((uint32_t)current < (uint32_t)&__heap_end__) {
+            while((uint32_t)current < (uint32_t)&__heap_end__ && current->size > 0) {
                 print_str("  Block at "); print_hex((uint32_t)current);
                 print_str(" | Size: "); itoa(current->size, temp_str); print_str(temp_str);
-                print_str(" | Free: "); print_str(current->free ? "Yes\n" : "No\n");
+                print_str(" | Free: "); print_str(current->free ? "Yes" : "No");
+                if (!current->free) {
+                    print_str(" | Magic: "); print_hex(current->magic);
+                }
+                print_str("\n");
                 current = (BlockHeader*)((uint8_t*)current + current->size);
             }
+        } else if (strcmp(command_name, "heapmap") == 0) {
+            print_heap_map();
         } else if (strcmp(command_name, "alloc") == 0) {
             int size_to_alloc = atoi(args_ptr, NULL);
             if (size_to_alloc > 0) {
@@ -348,7 +417,7 @@ void main(void) {
                     print_str("Reallocated to "); itoa(new_size, temp_str); print_str(temp_str);
                     print_str(" bytes at "); print_hex((uint32_t)p); print_str("\n");
                  } else {
-                    print_str("Realloc failed.\n");
+                    // Pesan error sudah dicetak di dalam realloc
                  }
              } else {
                  print_str("Usage: realloc <hex_address> <new_size>\n");
@@ -357,7 +426,6 @@ void main(void) {
              uint32_t addr = htoi(args_ptr, NULL);
              if (addr > 0) {
                 free((void*)addr);
-                print_str("Freed memory at "); print_hex(addr); print_str("\n");
              } else {
                 print_str("Usage: free <hex_address>\n");
              }
@@ -382,6 +450,25 @@ void main(void) {
             } else {
                 print_str("Usage: poke <hex_address> <hex_value>\n");
             }
+        } else if (strcmp(command_name, "fill") == 0) {
+            const char* ptr1, *ptr2;
+            uint32_t addr = htoi(args_ptr, &ptr1);
+            while(*ptr1 == ' ') ptr1++;
+            uint32_t value = htoi(ptr1, &ptr2);
+            while(*ptr2 == ' ') ptr2++;
+            int count = atoi(ptr2, NULL);
+            if (addr > 0 && count > 0) {
+                for (int j = 0; j < count; j++) {
+                    *(uint8_t*)(addr + j) = (uint8_t)value;
+                }
+                print_str("Filled "); itoa(count, temp_str); print_str(temp_str);
+                print_str(" bytes at "); print_hex(addr);
+                print_str(" with value "); print_hex(value); print_str("\n");
+            } else {
+                print_str("Usage: fill <hex_addr> <hex_value> <count>\n");
+            }
+        } else if (strcmp(command_name, "panic_test") == 0) {
+            panic("User-initiated test");
         } else if (strcmp(command_name, "exit") == 0) {
             print_str("Exiting Amadeus OS...\n");
             return;
