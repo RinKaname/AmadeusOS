@@ -1,0 +1,311 @@
+
+hello.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+00000000 <isr_vectors>:
+   0:	00 a0 00 20 15 01 00 00 7d 01 00 00 83 01 00 00     ... ....}.......
+
+00000010 <uart0_putc>:
+// String pesan yang akan ditampilkan.
+static char greet[] = "Welcome to Amadeus OS on LM3S6965evb! ^__________^\n";
+
+// Fungsi untuk mengirim satu karakter melalui UART0.
+void uart0_putc(char c)
+{
+  10:	b480      	push	{r7}
+  12:	b083      	sub	sp, #12
+  14:	af00      	add	r7, sp, #0
+  16:	4603      	mov	r3, r0
+  18:	71fb      	strb	r3, [r7, #7]
+    // *(UART0_FR) & UART0_FR_TXFF: Membaca Flag Register UART0 dan memeriksa bit TXFF (Transmit FIFO Full).
+    // Loop ini akan menunggu selama TX FIFO (buffer pengirim) penuh.
+    // Jika TX FIFO tidak penuh, kita bisa mengirim data.
+    while (*(UART0_FR) & UART0_FR_TXFF);
+  1a:	bf00      	nop
+  1c:	4b06      	ldr	r3, [pc, #24]	; (38 <uart0_putc+0x28>)
+  1e:	681b      	ldr	r3, [r3, #0]
+  20:	f003 0320 	and.w	r3, r3, #32
+  24:	2b00      	cmp	r3, #0
+  26:	d1f9      	bne.n	1c <uart0_putc+0xc>
+
+    // Menulis karakter ke Data Register UART0.
+    // Karakter akan otomatis dimasukkan ke TX FIFO dan dikirim.
+    *(UART0_DR) = c;
+  28:	4a04      	ldr	r2, [pc, #16]	; (3c <uart0_putc+0x2c>)
+  2a:	79fb      	ldrb	r3, [r7, #7]
+  2c:	6013      	str	r3, [r2, #0]
+}
+  2e:	bf00      	nop
+  30:	370c      	adds	r7, #12
+  32:	46bd      	mov	sp, r7
+  34:	bc80      	pop	{r7}
+  36:	4770      	bx	lr
+  38:	4000c018 	.word	0x4000c018
+  3c:	4000c000 	.word	0x4000c000
+
+00000040 <print_str>:
+
+// Fungsi untuk mencetak sebuah string ke konsol serial melalui UART0.
+void print_str(const char *str)
+{
+  40:	b580      	push	{r7, lr}
+  42:	b082      	sub	sp, #8
+  44:	af00      	add	r7, sp, #0
+  46:	6078      	str	r0, [r7, #4]
+    while (*str) {
+  48:	e007      	b.n	5a <print_str+0x1a>
+        uart0_putc(*str);
+  4a:	687b      	ldr	r3, [r7, #4]
+  4c:	781b      	ldrb	r3, [r3, #0]
+  4e:	4618      	mov	r0, r3
+  50:	f7ff ffde 	bl	10 <uart0_putc>
+        str++;
+  54:	687b      	ldr	r3, [r7, #4]
+  56:	3301      	adds	r3, #1
+  58:	607b      	str	r3, [r7, #4]
+    while (*str) {
+  5a:	687b      	ldr	r3, [r7, #4]
+  5c:	781b      	ldrb	r3, [r3, #0]
+  5e:	2b00      	cmp	r3, #0
+  60:	d1f3      	bne.n	4a <print_str+0xa>
+    }
+}
+  62:	bf00      	nop
+  64:	bf00      	nop
+  66:	3708      	adds	r7, #8
+  68:	46bd      	mov	sp, r7
+  6a:	bd80      	pop	{r7, pc}
+
+0000006c <uart0_init>:
+
+// Fungsi inisialisasi UART0
+void uart0_init(void)
+{
+  6c:	b480      	push	{r7}
+  6e:	af00      	add	r7, sp, #0
+    // 1. Aktifkan clock untuk GPIO Port A dan UART0
+    // LM3S6965: Gunakan register SYSCTL_RCGC2 untuk GPIO dan SYSCTL_RCGCUART untuk UART.
+    *(SYSCTL_RCGC2)   |= SYSCTL_RCGC2_GPIOA;  // Aktifkan clock untuk GPIO Port A
+  70:	4b1a      	ldr	r3, [pc, #104]	; (dc <uart0_init+0x70>)
+  72:	681b      	ldr	r3, [r3, #0]
+  74:	4a19      	ldr	r2, [pc, #100]	; (dc <uart0_init+0x70>)
+  76:	f043 0301 	orr.w	r3, r3, #1
+  7a:	6013      	str	r3, [r2, #0]
+    *(SYSCTL_RCGCUART) |= SYSCTL_RCGCUART_UART0; // Aktifkan clock untuk UART0
+  7c:	4b18      	ldr	r3, [pc, #96]	; (e0 <uart0_init+0x74>)
+  7e:	681b      	ldr	r3, [r3, #0]
+  80:	4a17      	ldr	r2, [pc, #92]	; (e0 <uart0_init+0x74>)
+  82:	f043 0301 	orr.w	r3, r3, #1
+  86:	6013      	str	r3, [r2, #0]
+    // volatile uint32_t ui32Loop = 0;
+    // ui32Loop = *(SYSCTL_RCGC2);
+    // ui32Loop = *(SYSCTL_RCGCUART);
+
+    // 2. Nonaktifkan UART0 (sebelum konfigurasi)
+    *(UART0_CTL) &= ~(UART0_CTL_UARTEN);
+  88:	4b16      	ldr	r3, [pc, #88]	; (e4 <uart0_init+0x78>)
+  8a:	681b      	ldr	r3, [r3, #0]
+  8c:	4a15      	ldr	r2, [pc, #84]	; (e4 <uart0_init+0x78>)
+  8e:	f023 0301 	bic.w	r3, r3, #1
+  92:	6013      	str	r3, [r2, #0]
+
+    // 3. Konfigurasi GPIO Pin PA0 (Rx) dan PA1 (Tx) sebagai fungsi alternatif UART
+    // Data sheet LM3S6965, Table 2-9. "GPIO Alternate Functions"
+    // PA0 dan PA1 memiliki fungsi alternatif UART0
+    *(GPIOA_AFSEL) |= ((1 << 0) | (1 << 1)); // Aktifkan fungsi alternatif untuk PA0 dan PA1
+  94:	4b14      	ldr	r3, [pc, #80]	; (e8 <uart0_init+0x7c>)
+  96:	681b      	ldr	r3, [r3, #0]
+  98:	4a13      	ldr	r2, [pc, #76]	; (e8 <uart0_init+0x7c>)
+  9a:	f043 0303 	orr.w	r3, r3, #3
+  9e:	6013      	str	r3, [r2, #0]
+    *(GPIOA_PCTL)  |= ((1 << 0) | (1 << 4)); // Konfigurasi PCTL untuk PA0 dan PA1 (U0Rx/U0Tx)
+  a0:	4b12      	ldr	r3, [pc, #72]	; (ec <uart0_init+0x80>)
+  a2:	681b      	ldr	r3, [r3, #0]
+  a4:	4a11      	ldr	r2, [pc, #68]	; (ec <uart0_init+0x80>)
+  a6:	f043 0311 	orr.w	r3, r3, #17
+  aa:	6013      	str	r3, [r2, #0]
+                                             // PCTL_PA0_U0RX (0x00000001), PCTL_PA1_U0TX (0x00000010)
+
+    *(GPIOA_DEN)   |= ((1 << 0) | (1 << 1)); // Aktifkan fungsi digital untuk PA0 dan PA1
+  ac:	4b10      	ldr	r3, [pc, #64]	; (f0 <uart0_init+0x84>)
+  ae:	681b      	ldr	r3, [r3, #0]
+  b0:	4a0f      	ldr	r2, [pc, #60]	; (f0 <uart0_init+0x84>)
+  b2:	f043 0303 	orr.w	r3, r3, #3
+  b6:	6013      	str	r3, [r2, #0]
+    // BRD = 16,000,000 / (16 * 115200) = 16,000,000 / 1,843,200 = 8.68055...
+    // IBRD (Integer Baud Rate Divisor) = floor(BRD) = 8
+    // FBRD (Fractional Baud Rate Divisor) = round(0.68055 * 64) = round(43.55) = 44
+    // Jadi, IBRD = 8, FBRD = 44.
+
+    *(UART0_IBRD) = 8;  // Set Integer Baud Rate Divisor
+  b8:	4b0e      	ldr	r3, [pc, #56]	; (f4 <uart0_init+0x88>)
+  ba:	2208      	movs	r2, #8
+  bc:	601a      	str	r2, [r3, #0]
+    *(UART0_FBRD) = 44; // Set Fractional Baud Rate Divisor
+  be:	4b0e      	ldr	r3, [pc, #56]	; (f8 <uart0_init+0x8c>)
+  c0:	222c      	movs	r2, #44	; 0x2c
+  c2:	601a      	str	r2, [r3, #0]
+
+    // 5. Konfigurasi Line Control Register, High (LCRH)
+    // - UART0_LCRH_WLEN_8: 8-bit data
+    // - UART0_LCRH_FEN: Aktifkan FIFO
+    // - No parity, 1 stop bit (default setelah bit-bit lain tidak diset)
+    *(UART0_LCRH) = (UART0_LCRH_WLEN_8 | UART0_LCRH_FEN);
+  c4:	4b0d      	ldr	r3, [pc, #52]	; (fc <uart0_init+0x90>)
+  c6:	2270      	movs	r2, #112	; 0x70
+  c8:	601a      	str	r2, [r3, #0]
+
+    // 6. Aktifkan UART0, Transmitter, dan Receiver
+    *(UART0_CTL) = (UART0_CTL_UARTEN | UART0_CTL_TXE | UART0_CTL_RXE);
+  ca:	4b06      	ldr	r3, [pc, #24]	; (e4 <uart0_init+0x78>)
+  cc:	f240 3201 	movw	r2, #769	; 0x301
+  d0:	601a      	str	r2, [r3, #0]
+}
+  d2:	bf00      	nop
+  d4:	46bd      	mov	sp, r7
+  d6:	bc80      	pop	{r7}
+  d8:	4770      	bx	lr
+  da:	bf00      	nop
+  dc:	400fe108 	.word	0x400fe108
+  e0:	400fe618 	.word	0x400fe618
+  e4:	4000c030 	.word	0x4000c030
+  e8:	40004420 	.word	0x40004420
+  ec:	4000452c 	.word	0x4000452c
+  f0:	4000451c 	.word	0x4000451c
+  f4:	4000c024 	.word	0x4000c024
+  f8:	4000c028 	.word	0x4000c028
+  fc:	4000c02c 	.word	0x4000c02c
+
+00000100 <main>:
+
+
+// Fungsi utama (main function) dari OS minimal Anda
+void main(void)
+{
+ 100:	b580      	push	{r7, lr}
+ 102:	af00      	add	r7, sp, #0
+    // Inisialisasi clock yang lebih kompleks seperti di startup.c sebelumnya
+    // harus disesuaikan dengan datasheet LM3S6965.
+    // Untuk "Hello World", inisialisasi UART sudah termasuk aktivasi clock peripheral.
+
+    // Inisialisasi UART0
+    uart0_init();
+ 104:	f7ff ffb2 	bl	6c <uart0_init>
+
+    // Cetak pesan selamat datang
+    print_str(greet);
+ 108:	4801      	ldr	r0, [pc, #4]	; (110 <main+0x10>)
+ 10a:	f7ff ff99 	bl	40 <print_str>
+
+    // Loop tak terbatas agar kernel tidak mati/reboot
+    while (1);
+ 10e:	e7fe      	b.n	10e <main+0xe>
+ 110:	20000000 	.word	0x20000000
+
+00000114 <reset_handler>:
+ * This is the very first C function executed by the CPU after a reset event (e.g., power-on).
+ * Its address is crucial and is placed in the Interrupt Vector Table.
+ * Its main responsibilities are to set up the C runtime environment before calling main().
+ */
+void reset_handler(void)
+{
+ 114:	b580      	push	{r7, lr}
+ 116:	b086      	sub	sp, #24
+ 118:	af00      	add	r7, sp, #0
+    /* Copy the data segment initializers from flash to SRAM */
+    // This section copies initialized global variables from Flash memory (ROM),
+    // where they are stored as part of the program binary, to SRAM (RAM).
+    // Variables initialized in C (like 'static char greet[]' in hello.c)
+    // need to be copied to RAM so the CPU can access and potentially modify them during runtime.
+    uint32_t *idata_begin = &_sidata; // Pointer to the beginning of initialized data in Flash (ROM).
+ 11a:	4b13      	ldr	r3, [pc, #76]	; (168 <reset_handler+0x54>)
+ 11c:	617b      	str	r3, [r7, #20]
+    uint32_t *data_begin = &_sdata;   // Pointer to the beginning of the .data section in RAM.
+ 11e:	4b13      	ldr	r3, [pc, #76]	; (16c <reset_handler+0x58>)
+ 120:	613b      	str	r3, [r7, #16]
+    uint32_t *data_end = &_edata;     // Pointer to the end of the .data section in RAM.
+ 122:	4b13      	ldr	r3, [pc, #76]	; (170 <reset_handler+0x5c>)
+ 124:	60bb      	str	r3, [r7, #8]
+    while (data_begin < data_end)     // Loop to copy data word by word (32-bit words).
+ 126:	e007      	b.n	138 <reset_handler+0x24>
+    {
+        *data_begin++ = *idata_begin++; // Copy from Flash to RAM, then advance pointers.
+ 128:	697a      	ldr	r2, [r7, #20]
+ 12a:	1d13      	adds	r3, r2, #4
+ 12c:	617b      	str	r3, [r7, #20]
+ 12e:	693b      	ldr	r3, [r7, #16]
+ 130:	1d19      	adds	r1, r3, #4
+ 132:	6139      	str	r1, [r7, #16]
+ 134:	6812      	ldr	r2, [r2, #0]
+ 136:	601a      	str	r2, [r3, #0]
+    while (data_begin < data_end)     // Loop to copy data word by word (32-bit words).
+ 138:	693a      	ldr	r2, [r7, #16]
+ 13a:	68bb      	ldr	r3, [r7, #8]
+ 13c:	429a      	cmp	r2, r3
+ 13e:	d3f3      	bcc.n	128 <reset_handler+0x14>
+    /* Zero fill the bss segment. */
+    // This section fills all bytes in the '.bss' segment with zero.
+    // The '.bss' segment contains uninitialized global variables (e.g., `int counter;`).
+    // In the program binary stored in Flash, these variables don't consume space,
+    // but in RAM, they need to be allocated and initialized to zero as per C standard.
+    uint32_t *bss_begin = &_sbss; // Pointer to the beginning of the .bss section in RAM.
+ 140:	4b0c      	ldr	r3, [pc, #48]	; (174 <reset_handler+0x60>)
+ 142:	60fb      	str	r3, [r7, #12]
+    uint32_t *bss_end = &_ebss;   // Pointer to the end of the .bss section in RAM.
+ 144:	4b0c      	ldr	r3, [pc, #48]	; (178 <reset_handler+0x64>)
+ 146:	607b      	str	r3, [r7, #4]
+    while (bss_begin < bss_end)   // Loop to zero-fill the .bss segment word by word.
+ 148:	e004      	b.n	154 <reset_handler+0x40>
+    {
+        *bss_begin++ = 0; // Write 0 to each location in .bss, then advance pointer.
+ 14a:	68fb      	ldr	r3, [r7, #12]
+ 14c:	1d1a      	adds	r2, r3, #4
+ 14e:	60fa      	str	r2, [r7, #12]
+ 150:	2200      	movs	r2, #0
+ 152:	601a      	str	r2, [r3, #0]
+    while (bss_begin < bss_end)   // Loop to zero-fill the .bss segment word by word.
+ 154:	68fa      	ldr	r2, [r7, #12]
+ 156:	687b      	ldr	r3, [r7, #4]
+ 158:	429a      	cmp	r2, r3
+ 15a:	d3f6      	bcc.n	14a <reset_handler+0x36>
+
+    // Call the 'main()' function of your kernel.
+    // After all fundamental setup (copy .data, zero .bss) is complete,
+    // program control is transferred to your 'main' function, where your OS
+    // begins its primary execution.
+    main();
+ 15c:	f7ff ffd0 	bl	100 <main>
+}
+ 160:	bf00      	nop
+ 162:	3718      	adds	r7, #24
+ 164:	46bd      	mov	sp, r7
+ 166:	bd80      	pop	{r7, pc}
+ 168:	00000188 	.word	0x00000188
+ 16c:	20000000 	.word	0x20000000
+ 170:	20000034 	.word	0x20000034
+ 174:	20000034 	.word	0x20000034
+ 178:	20000034 	.word	0x20000034
+
+0000017c <nmi_handler>:
+ * that is not handled specifically elsewhere.
+ * For minimal OSes, they often just contain an infinite loop to halt the CPU
+ * if an unexpected error occurs.
+ */
+void nmi_handler(void) // Non-Maskable Interrupt (NMI) handler.
+{                      // This is a high-priority interrupt that cannot be ignored.
+ 17c:	b480      	push	{r7}
+ 17e:	af00      	add	r7, sp, #0
+    while (1);         // Infinite loop: If an NMI occurs, the CPU will halt here.
+ 180:	e7fe      	b.n	180 <nmi_handler+0x4>
+
+00000182 <hardfault_handler>:
+}
+
+void hardfault_handler(void) // Hard Fault handler.
+{                            // This is a fatal error detected by the CPU (e.g., illegal memory access).
+ 182:	b480      	push	{r7}
+ 184:	af00      	add	r7, sp, #0
+    while (1);               // Infinite loop: If a Hard Fault occurs, the CPU will halt here.
+ 186:	e7fe      	b.n	186 <hardfault_handler+0x4>
